@@ -9,16 +9,40 @@ function App() {
   const [error, setError] = useState(null)
 
   // OpenWeatherMap API key - you'll need to get your own from openweathermap.org
-  const API_KEY = 'bd5e378503939ddaee76f12ad7a97608'
+  const API_KEY = '0bb10a966d4e894fff91f902a48cf629'
+
+  // Demo data function for when API limit is reached
+  const getDemoWeatherData = (locationName) => {
+    console.log(`Using demo data for ${locationName}`)
+    return {
+      list: [
+        {
+          dt: Date.now() / 1000,
+          main: { temp: -2, temp_max: 1, temp_min: -5 },
+          weather: [{ main: 'Snow', description: 'light snow' }]
+        },
+        {
+          dt: Date.now() / 1000 + 86400,
+          main: { temp: 0, temp_max: 3, temp_min: -3 },
+          weather: [{ main: 'Clouds', description: 'overcast clouds' }]
+        },
+        {
+          dt: Date.now() / 1000 + 172800,
+          main: { temp: 5, temp_max: 8, temp_min: 2 },
+          weather: [{ main: 'Clear', description: 'clear sky' }]
+        }
+      ]
+    }
+  }
 
   const fetchWeather = async (locationName) => {
     setLoading(true)
     setError(null)
 
-    try {
-      // Add minimum 2-second loading time for better UX
-      const startTime = Date.now()
+    // Declare startTime outside try block so it's accessible in catch
+    const startTime = Date.now()
 
+    try {
       // Get coordinates for the location
       const geoResponse = await axios.get(
         `https://api.openweathermap.org/geo/1.0/direct?q=${locationName}&limit=1&appid=${API_KEY}`
@@ -55,6 +79,11 @@ function App() {
 
       if (err.response?.status === 401) {
         setError('❌ Invalid API key. Please check your OpenWeatherMap API key and make sure it\'s activated.')
+      } else if (err.response?.status === 429) {
+        setError('❌ API rate limit exceeded. Showing demo data instead.')
+        // Use demo data when API limit is reached
+        setWeatherData(getDemoWeatherData(locationName))
+        return
       } else {
         setError(err.message)
       }
