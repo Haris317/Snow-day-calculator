@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
-import Logo from './components/Logo'
 
 function App() {
   const [location, setLocation] = useState('')
@@ -169,8 +168,7 @@ function App() {
       <header className="header">
         <div className="header-content">
           <div className="header-title">
-            <Logo size={50} />
-            <h1>Snow Day Calculator</h1>
+            <h1>❄️ Snow Day Calculator</h1>
           </div>
           <form onSubmit={handleLocationSubmit} className="location-form">
             <input
