@@ -1,3 +1,4 @@
+
 # ❄️ Snow Day Calculator
 
 A modern, responsive React application that predicts snow days based on real-time weather data. Built with React, Vite, and the OpenWeatherMap API.
@@ -98,5 +99,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-Your Name - [your.email@example.com]
-Project Link: [https://github.com/YOUR_USERNAME/snow-day-calculator]
+Haris - [haris@example.com]
+Project Link: [https://github.com/Haris317/Snow-day-calculator]
