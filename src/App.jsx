@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
+import Logo from './components/Logo'
 
 function App() {
   const [location, setLocation] = useState('')
@@ -11,7 +12,7 @@ function App() {
   // OpenWeatherMap API key - you'll need to get your own from openweathermap.org
   const API_KEY = '0bb10a966d4e894fff91f902a48cf629'
 
-  const fetchWeather = async (locationName) => {
+  const fetchWeatherByCoords = async (lat, lon, locationName = null) => {
     setLoading(true)
     setError(null)
 
@@ -19,21 +20,28 @@ function App() {
       // Add minimum 2-second loading time for better UX
       const startTime = Date.now()
 
-      // Get coordinates for the location
-      const geoResponse = await axios.get(
-        `https://api.openweathermap.org/geo/1.0/direct?q=${locationName}&limit=1&appid=${API_KEY}`
-      )
-
-      if (geoResponse.data.length === 0) {
-        throw new Error('Location not found')
-      }
-
-      const { lat, lon } = geoResponse.data[0]
-
       // Get weather forecast
       const weatherResponse = await axios.get(
         `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
       )
+
+      // If no location name provided, get it from reverse geocoding
+      let displayLocation = locationName
+      if (!displayLocation) {
+        try {
+          const reverseGeoResponse = await axios.get(
+            `https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${API_KEY}`
+          )
+          if (reverseGeoResponse.data.length > 0) {
+            const locationData = reverseGeoResponse.data[0]
+            displayLocation = locationData.name + (locationData.state ? `, ${locationData.state}` : '') + (locationData.country ? `, ${locationData.country}` : '')
+          } else {
+            displayLocation = `${lat.toFixed(2)}, ${lon.toFixed(2)}`
+          }
+        } catch (geoErr) {
+          displayLocation = `${lat.toFixed(2)}, ${lon.toFixed(2)}`
+        }
+      }
 
       // Ensure minimum 2-second loading time
       const elapsedTime = Date.now() - startTime
@@ -43,7 +51,7 @@ function App() {
         await new Promise(resolve => setTimeout(resolve, remainingTime))
       }
 
-      setWeatherData(weatherResponse.data)
+      setWeatherData({ ...weatherResponse.data, displayLocation })
     } catch (err) {
       // Ensure minimum 2-second loading time even for errors
       const elapsedTime = Date.now() - startTime
@@ -64,8 +72,92 @@ function App() {
     }
   }
 
-  // Removed automatic weather fetch on component mount
-  // Users now need to manually enter a location and click "Get Weather"
+  const fetchWeather = async (locationName) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Add minimum 2-second loading time for better UX
+      const startTime = Date.now()
+
+      // Get coordinates for the location
+      const geoResponse = await axios.get(
+        `https://api.openweathermap.org/geo/1.0/direct?q=${locationName}&limit=1&appid=${API_KEY}`
+      )
+
+      if (geoResponse.data.length === 0) {
+        throw new Error('Location not found')
+      }
+
+      const { lat, lon, name, state, country } = geoResponse.data[0]
+      const displayLocation = name + (state ? `, ${state}` : '') + (country ? `, ${country}` : '')
+
+      // Get weather forecast
+      const weatherResponse = await axios.get(
+        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+      )
+
+      // Ensure minimum 2-second loading time
+      const elapsedTime = Date.now() - startTime
+      const remainingTime = Math.max(0, 2000 - elapsedTime)
+
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime))
+      }
+
+      setWeatherData({ ...weatherResponse.data, displayLocation })
+    } catch (err) {
+      // Ensure minimum 2-second loading time even for errors
+      const elapsedTime = Date.now() - startTime
+      const remainingTime = Math.max(0, 2000 - elapsedTime)
+
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime))
+      }
+
+      if (err.response?.status === 401) {
+        setError('❌ Invalid API key. Please check your OpenWeatherMap API key and make sure it\'s activated.')
+      } else {
+        setError(err.message)
+      }
+      console.error('Weather fetch error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Auto-detect user's location on component mount
+  useEffect(() => {
+    const getUserLocation = () => {
+      if (navigator.geolocation) {
+        setLoading(true)
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const { latitude, longitude } = position.coords
+              await fetchWeatherByCoords(latitude, longitude)
+            } catch (err) {
+              console.error('Error fetching weather for current location:', err)
+              setError('Unable to fetch weather for your current location')
+              setLoading(false)
+            }
+          },
+          (error) => {
+            console.error('Geolocation error:', error)
+            setLoading(false)
+            // Don't show error for geolocation denial, just leave the app ready for manual input
+          },
+          {
+            timeout: 10000,
+            enableHighAccuracy: true,
+            maximumAge: 300000 // 5 minutes
+          }
+        )
+      }
+    }
+
+    getUserLocation()
+  }, [])
 
   const handleLocationSubmit = (e) => {
     e.preventDefault()
@@ -75,19 +167,24 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Snow Day Calculator</h1>
-        <form onSubmit={handleLocationSubmit} className="location-form">
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Enter city name or ZIP code"
-            className="location-input"
-          />
-          <button type="submit" className="get-weather-btn">
-            Get Weather
-          </button>
-        </form>
+        <div className="header-content">
+          <div className="header-title">
+            <Logo size={50} />
+            <h1>Snow Day Calculator</h1>
+          </div>
+          <form onSubmit={handleLocationSubmit} className="location-form">
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Enter city name or ZIP code"
+              className="location-input"
+            />
+            <button type="submit" className="get-weather-btn">
+              Get Weather
+            </button>
+          </form>
+        </div>
       </header>
 
       <main className="main-content">
@@ -98,8 +195,8 @@ function App() {
                 <div className="snowflake">❄️</div>
               </div>
               <div className="loading-text">
-                <h3>Fetching Weather Data</h3>
-                <p>Analyzing conditions for snow day predictions...</p>
+                <h3>{location ? 'Fetching Weather Data' : 'Detecting Your Location'}</h3>
+                <p>{location ? 'Analyzing conditions for snow day predictions...' : 'Getting weather forecast for your area...'}</p>
               </div>
             </div>
           </div>
@@ -118,11 +215,14 @@ function App() {
           </div>
         )}
 
-        {weatherData && <WeatherDisplay weatherData={weatherData} location={location} />}
+        {weatherData && <WeatherDisplay weatherData={weatherData} />}
 
         {!weatherData && !loading && !error && (
           <div className="placeholder">
             <p>🌨️ Enter a location to check snow day predictions!</p>
+            <p style={{fontSize: '0.9rem', color: '#64748b', marginTop: '1rem'}}>
+              💡 Allow location access for automatic weather detection
+            </p>
           </div>
         )}
       </main>
@@ -149,7 +249,7 @@ function App() {
 }
 
 // Weather Display Component
-function WeatherDisplay({ weatherData, location }) {
+function WeatherDisplay({ weatherData }) {
   const groupForecastByDay = (list) => {
     const grouped = {}
 
@@ -202,7 +302,7 @@ function WeatherDisplay({ weatherData, location }) {
 
   return (
     <div className="weather-display">
-      <h2>Weather Forecast for {location}</h2>
+      <h2>Weather Forecast for {weatherData.displayLocation || 'Your Location'}</h2>
 
       {days.map(day => {
         const dayForecasts = groupedForecasts[day]
