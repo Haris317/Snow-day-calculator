@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
 
@@ -7,9 +7,70 @@ function App() {
   const [weatherData, setWeatherData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [gettingLocation, setGettingLocation] = useState(false)
+  const [currentLocationName, setCurrentLocationName] = useState('')
 
   // OpenWeatherMap API key - you'll need to get your own from openweathermap.org
   const API_KEY = '0bb10a966d4e894fff91f902a48cf629'
+
+  // Get user's current location using geolocation API
+  const getCurrentLocation = async () => {
+    setGettingLocation(true)
+    setError(null)
+
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by this browser')
+      setGettingLocation(false)
+      return
+    }
+
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5 minutes
+        })
+      })
+
+      const { latitude, longitude } = position.coords
+
+      // Reverse geocoding to get location name
+      const geoResponse = await axios.get(
+        `https://api.openweathermap.org/geo/1.0/reverse?lat=${latitude}&lon=${longitude}&limit=1&appid=${API_KEY}`
+      )
+
+      if (geoResponse.data.length > 0) {
+        const locationData = geoResponse.data[0]
+        const locationName = `${locationData.name}, ${locationData.country}`
+        setCurrentLocationName(locationName)
+        // Keep search bar blank - don't set location input
+
+        // Automatically fetch weather for current location
+        await fetchWeather(locationName)
+      } else {
+        setError('Could not determine location name')
+      }
+    } catch (err) {
+      if (err.code === 1) {
+        setError('Location access denied. Please enable location services and try again.')
+      } else if (err.code === 2) {
+        setError('Location unavailable. Please check your internet connection.')
+      } else if (err.code === 3) {
+        setError('Location request timed out. Please try again.')
+      } else {
+        setError('Failed to get current location: ' + err.message)
+      }
+      console.error('Geolocation error:', err)
+    } finally {
+      setGettingLocation(false)
+    }
+  }
+
+  // Auto-detect location when app loads
+  useEffect(() => {
+    getCurrentLocation()
+  }, [])
 
   // Demo data function for when API limit is reached
   const getDemoWeatherData = (locationName) => {
@@ -105,6 +166,14 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>Snow Day Calculator</h1>
+
+        {currentLocationName && (
+          <div className="current-location">
+            <span className="location-icon">📍</span>
+            Current location: <strong>{currentLocationName}</strong>
+          </div>
+        )}
+
         <form onSubmit={handleLocationSubmit} className="location-form">
           <input
             type="text"
@@ -113,22 +182,22 @@ function App() {
             placeholder="Enter city name or ZIP code"
             className="location-input"
           />
-          <button type="submit" className="get-weather-btn">
-            Get Weather
+          <button type="submit" className="get-weather-btn" disabled={loading || gettingLocation}>
+            {loading ? 'Getting Weather...' : 'Get Weather'}
           </button>
         </form>
       </header>
 
       <main className="main-content">
-        {loading && (
+        {(loading || gettingLocation) && (
           <div className="loading">
             <div className="loading-content">
               <div className="snowflake-loader">
-                <div className="snowflake">❄️</div>
+                <div className="snowflake">{gettingLocation ? '📍' : '❄️'}</div>
               </div>
               <div className="loading-text">
-                <h3>Fetching Weather Data</h3>
-                <p>Analyzing conditions for snow day predictions...</p>
+                <h3>{gettingLocation ? 'Getting Your Location' : 'Fetching Weather Data'}</h3>
+                <p>{gettingLocation ? 'Detecting your current location...' : 'Analyzing conditions for snow day predictions...'}</p>
               </div>
             </div>
           </div>
@@ -149,9 +218,9 @@ function App() {
 
         {weatherData && <WeatherDisplay weatherData={weatherData} location={location} />}
 
-        {!weatherData && !loading && !error && (
+        {!weatherData && !loading && !gettingLocation && !error && (
           <div className="placeholder">
-            <p>🌨️ Enter a location to check snow day predictions!</p>
+            <p>🌨️ {currentLocationName ? 'Weather data will load automatically for your location!' : 'Enter a location or use current location to check snow day predictions!'}</p>
           </div>
         )}
       </main>
