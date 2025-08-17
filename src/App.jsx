@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import axios from 'axios'
 import './App.css'
 
@@ -7,117 +7,65 @@ function App() {
   const [weatherData, setWeatherData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [isAutoLocation, setIsAutoLocation] = useState(false)
 
-  // Weather API configuration
+  // OpenWeatherMap API key - you'll need to get your own from openweathermap.org
   const API_KEY = 'bd5e378503939ddaee76f12ad7a97608'
-  const BASE_URL = 'https://api.openweathermap.org/data/2.5'
 
-  // Fetch weather by coordinates (for auto-location)
-  const fetchWeatherByCoords = async (lat, lon) => {
+  const fetchWeather = async (locationName) => {
     setLoading(true)
     setError(null)
-    setIsAutoLocation(true)
 
     try {
-      // Add minimum loading time for better UX
+      // Add minimum 2-second loading time for better UX
       const startTime = Date.now()
 
-      const [weatherResponse, forecastResponse, locationResponse] = await Promise.all([
-        axios.get(`${BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`),
-        axios.get(`${BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`),
-        axios.get(`https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${API_KEY}`)
-      ])
-
-      const locationName = locationResponse.data[0]
-        ? `${locationResponse.data[0].name}, ${locationResponse.data[0].state || locationResponse.data[0].country}`
-        : `${lat.toFixed(2)}, ${lon.toFixed(2)}`
-
-      const combinedData = {
-        current: weatherResponse.data,
-        forecast: forecastResponse.data,
-        displayLocation: locationName
-      }
-
-      // Ensure minimum loading time
-      const elapsedTime = Date.now() - startTime
-      const remainingTime = Math.max(0, 2000 - elapsedTime)
-
-      setTimeout(() => {
-        setWeatherData(combinedData)
-        setLoading(false)
-        setIsAutoLocation(false)
-      }, remainingTime)
-
-    } catch (err) {
-      console.error('Weather fetch error:', err)
-      setError('Failed to fetch weather data. Please try again.')
-      setLoading(false)
-      setIsAutoLocation(false)
-    }
-  }
-
-  // Fetch weather by location name
-  const fetchWeather = async (locationQuery) => {
-    if (!locationQuery.trim()) return
-
-    setLoading(true)
-    setError(null)
-    setIsAutoLocation(false)
-
-    try {
-      // Add minimum loading time for better UX
-      const startTime = Date.now()
-
-      const [weatherResponse, forecastResponse] = await Promise.all([
-        axios.get(`${BASE_URL}/weather?q=${locationQuery}&appid=${API_KEY}&units=metric`),
-        axios.get(`${BASE_URL}/forecast?q=${locationQuery}&appid=${API_KEY}&units=metric`)
-      ])
-
-      const combinedData = {
-        current: weatherResponse.data,
-        forecast: forecastResponse.data,
-        displayLocation: weatherResponse.data.name + ', ' + weatherResponse.data.sys.country
-      }
-
-      // Ensure minimum loading time
-      const elapsedTime = Date.now() - startTime
-      const remainingTime = Math.max(0, 2000 - elapsedTime)
-
-      setTimeout(() => {
-        setWeatherData(combinedData)
-        setLoading(false)
-      }, remainingTime)
-
-    } catch (err) {
-      console.error('Weather fetch error:', err)
-      setError('Location not found. Please check the spelling and try again.')
-      setLoading(false)
-    }
-  }
-
-  // Get user's current location
-  const getUserLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          fetchWeatherByCoords(latitude, longitude)
-        },
-        (error) => {
-          console.error('Geolocation error:', error)
-          setError('Location access denied. Please enter your location manually.')
-        }
+      // Get coordinates for the location
+      const geoResponse = await axios.get(
+        `https://api.openweathermap.org/geo/1.0/direct?q=${locationName}&limit=1&appid=${API_KEY}`
       )
-    } else {
-      setError('Geolocation is not supported by this browser.')
+
+      if (geoResponse.data.length === 0) {
+        throw new Error('Location not found')
+      }
+
+      const { lat, lon } = geoResponse.data[0]
+
+      // Get weather forecast
+      const weatherResponse = await axios.get(
+        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+      )
+
+      // Ensure minimum 2-second loading time
+      const elapsedTime = Date.now() - startTime
+      const remainingTime = Math.max(0, 2000 - elapsedTime)
+
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime))
+      }
+
+      setWeatherData(weatherResponse.data)
+    } catch (err) {
+      // Ensure minimum 2-second loading time even for errors
+      const elapsedTime = Date.now() - startTime
+      const remainingTime = Math.max(0, 2000 - elapsedTime)
+
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime))
+      }
+
+      if (err.response?.status === 401) {
+        setError('❌ Invalid API key. Please check your OpenWeatherMap API key and make sure it\'s activated.')
+      } else {
+        setError(err.message)
+      }
+      console.error('Weather fetch error:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
-  // Auto-fetch location on component mount
-  useEffect(() => {
-    getUserLocation()
-  }, [])
+  // Removed automatic weather fetch on component mount
+  // Users now need to manually enter a location and click "Get Weather"
 
   const handleLocationSubmit = (e) => {
     e.preventDefault()
@@ -127,221 +75,198 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="header-content">
-          <div className="header-title">
-            <h1>❄️ Snow Day Calculator</h1>
-          </div>
-          <p className="subtitle">Get accurate snow day predictions for your area</p>
-        </div>
+        <h1>Snow Day Calculator</h1>
+        <form onSubmit={handleLocationSubmit} className="location-form">
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Enter city name or ZIP code"
+            className="location-input"
+          />
+          <button type="submit" className="get-weather-btn">
+            Get Weather
+          </button>
+        </form>
       </header>
 
       <main className="main-content">
-        <div className="search-section">
-          <form onSubmit={handleLocationSubmit} className="search-form">
-            <div className="search-input-group">
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Enter city name or ZIP code..."
-                className="search-input"
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                className="search-button"
-                disabled={loading || !location.trim()}
-              >
-                {loading ? '🔄' : '🔍'}
-              </button>
-            </div>
-          </form>
-
-          <button
-            onClick={getUserLocation}
-            className="location-button"
-            disabled={loading}
-          >
-            📍 Use My Location
-          </button>
-        </div>
-
         {loading && (
           <div className="loading">
-            <div className="loading-spinner"></div>
-            <p>{isAutoLocation ? 'Getting weather for your location...' : 'Searching for weather data...'}</p>
+            <div className="loading-content">
+              <div className="snowflake-loader">
+                <div className="snowflake">❄️</div>
+              </div>
+              <div className="loading-text">
+                <h3>Fetching Weather Data</h3>
+                <p>Analyzing conditions for snow day predictions...</p>
+              </div>
+            </div>
           </div>
         )}
 
         {error && (
           <div className="error">
-            <p>❌ {error}</p>
+            {error === 'Please add your OpenWeatherMap API key to use this feature' ? (
+              <div>
+                <p>{error}</p>
+                <p>Get your free API key at: <a href="https://openweathermap.org/api" target="_blank" rel="noopener noreferrer">openweathermap.org</a></p>
+              </div>
+            ) : (
+              <p>Error: {error}</p>
+            )}
           </div>
         )}
 
-        {weatherData && <WeatherDisplay weatherData={weatherData} />}
+        {weatherData && <WeatherDisplay weatherData={weatherData} location={location} />}
+
+        {!weatherData && !loading && !error && (
+          <div className="placeholder">
+            <p>🌨️ Enter a location to check snow day predictions!</p>
+          </div>
+        )}
       </main>
 
       <FAQ />
 
       <footer className="footer">
-        <p>&copy; 2024 Snow Day Calculator. Weather data provided by OpenWeatherMap.</p>
+        <p>© 2025 Snow Day Calculator. All rights reserved.</p>
+        <p>Weather data provided by <a href="https://openweathermap.org" target="_blank" rel="noopener noreferrer">OpenWeatherMap</a></p>
+        <p>Today is {new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })}, {new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        })}</p>
+        <p>💡 Tip: Check the forecast regularly for the most accurate predictions!</p>
       </footer>
     </div>
   )
 }
 
 // Weather Display Component
-function WeatherDisplay({ weatherData }) {
-  const { current, forecast, displayLocation } = weatherData
+function WeatherDisplay({ weatherData, location }) {
+  const groupForecastByDay = (list) => {
+    const grouped = {}
 
-  // Calculate snow day probability
-  const calculateSnowDayProbability = (weather) => {
-    let probability = 0
-    const temp = weather.main.temp
-    const condition = weather.weather[0].main.toLowerCase()
-    const windSpeed = weather.wind?.speed || 0
-    const visibility = weather.visibility || 10000
+    list.forEach(item => {
+      const date = new Date(item.dt * 1000).toDateString()
+      if (!grouped[date]) {
+        grouped[date] = []
+      }
+      grouped[date].push(item)
+    })
 
-    // Temperature factor (higher chance if below freezing)
-    if (temp <= 0) probability += 40
-    else if (temp <= 2) probability += 30
-    else if (temp <= 5) probability += 20
-    else if (temp <= 10) probability += 10
-
-    // Weather condition factor
-    if (condition.includes('snow')) probability += 35
-    else if (condition.includes('sleet') || condition.includes('freezing')) probability += 30
-    else if (condition.includes('rain') && temp <= 2) probability += 25
-    else if (condition.includes('storm')) probability += 20
-
-    // Wind factor
-    if (windSpeed > 10) probability += 15
-    else if (windSpeed > 7) probability += 10
-
-    // Visibility factor
-    if (visibility < 1000) probability += 10
-    else if (visibility < 5000) probability += 5
-
-    return Math.min(100, Math.max(0, probability))
+    return grouped
   }
 
-  const getWeatherIcon = (condition) => {
-    const icons = {
-      'clear': '☀️',
-      'clouds': '☁️',
-      'rain': '🌧️',
-      'drizzle': '🌦️',
-      'thunderstorm': '⛈️',
-      'snow': '🌨️',
-      'mist': '🌫️',
-      'fog': '🌫️',
-      'haze': '🌫️'
+  const getSnowDayPrediction = (dayForecasts) => {
+    const hasSnow = dayForecasts.some(forecast =>
+      forecast.weather[0].main.toLowerCase().includes('snow') ||
+      forecast.weather[0].description.toLowerCase().includes('snow')
+    )
+
+    const hasHeavyRain = dayForecasts.some(forecast =>
+      forecast.weather[0].description.toLowerCase().includes('heavy rain')
+    )
+
+    const lowTemp = Math.min(...dayForecasts.map(f => f.main.temp))
+    const avgTemp = dayForecasts.reduce((sum, f) => sum + f.main.temp, 0) / dayForecasts.length
+
+    if (hasSnow && lowTemp < 2) {
+      return { emoji: '❄️', message: 'High chance of snow day!', probability: 'High', className: 'high-chance' }
+    } else if (hasSnow && avgTemp < 5) {
+      return { emoji: '🌨️', message: 'Possible snow day - monitor conditions', probability: 'Medium', className: 'medium-chance' }
+    } else if (hasHeavyRain && lowTemp < 0) {
+      return { emoji: '🧊', message: 'Possible ice day - be cautious', probability: 'Medium', className: 'medium-chance' }
+    } else if (lowTemp < -10) {
+      return { emoji: '🥶', message: 'Extreme cold - possible closure', probability: 'Low', className: 'low-chance' }
+    } else {
+      const currentMonth = new Date().getMonth()
+      const isWinterSeason = currentMonth >= 11 || currentMonth <= 2 // Dec, Jan, Feb
+
+      if (!isWinterSeason) {
+        return { emoji: '🌞', message: "It's off-season. No snow day expected.", probability: 'None', className: 'no-chance' }
+      } else {
+        return { emoji: '🌤️', message: 'No snow day expected', probability: 'None', className: 'no-chance' }
+      }
     }
-    return icons[condition.toLowerCase()] || '🌤️'
   }
 
-  const getSnowDayMessage = (probability) => {
-    if (probability >= 80) return { text: "Very High - School likely closed!", color: "#dc2626" }
-    if (probability >= 60) return { text: "High - Good chance of closure", color: "#ea580c" }
-    if (probability >= 40) return { text: "Moderate - Possible closure", color: "#d97706" }
-    if (probability >= 20) return { text: "Low - Unlikely closure", color: "#65a30d" }
-    return { text: "Very Low - School will be open", color: "#16a34a" }
-  }
-
-  const currentProbability = calculateSnowDayProbability(current)
-  const snowDayMessage = getSnowDayMessage(currentProbability)
-
-  // Get next 3 days forecast
-  const dailyForecasts = []
-  const processedDates = new Set()
-
-  forecast.list.forEach(item => {
-    const date = new Date(item.dt * 1000)
-    const dateStr = date.toDateString()
-
-    if (!processedDates.has(dateStr) && dailyForecasts.length < 3) {
-      processedDates.add(dateStr)
-      dailyForecasts.push({
-        date: date,
-        weather: item,
-        probability: calculateSnowDayProbability(item)
-      })
-    }
-  })
+  const groupedForecasts = groupForecastByDay(weatherData.list)
+  const days = Object.keys(groupedForecasts).slice(0, 3) // Show 3 days
 
   return (
     <div className="weather-display">
-      <div className="current-weather">
-        <h2>📍 {displayLocation}</h2>
-        <div className="current-stats">
-          <div className="temperature">
-            <span className="temp-value">{Math.round(current.main.temp)}°C</span>
-            <span className="weather-icon">{getWeatherIcon(current.weather[0].main)}</span>
-          </div>
-          <div className="weather-details">
-            <p className="condition">{current.weather[0].description}</p>
-            <p className="feels-like">Feels like {Math.round(current.main.feels_like)}°C</p>
-          </div>
-        </div>
+      <h2>Weather Forecast for {location}</h2>
 
-        <div className="snow-day-prediction">
-          <h3>❄️ Snow Day Probability</h3>
-          <div className="probability-display">
-            <div className="probability-circle">
-              <span className="probability-number">{currentProbability}%</span>
+      {days.map(day => {
+        const dayForecasts = groupedForecasts[day]
+        const prediction = getSnowDayPrediction(dayForecasts)
+        const dayName = new Date(day).toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric'
+        })
+
+        return (
+          <div key={day} className={`day-forecast ${prediction.className}`}>
+            <div className="day-header">
+              <h3 className="prediction-message">
+                <span className="prediction-emoji">{prediction.emoji}</span>
+                {prediction.message}
+                <span className={`probability-badge ${prediction.className}`}>
+                  {prediction.probability}
+                </span>
+              </h3>
+              <h4>{dayName}</h4>
             </div>
-            <p className="probability-message" style={{ color: snowDayMessage.color }}>
-              {snowDayMessage.text}
-            </p>
+
+            <div className="hourly-forecasts">
+              {dayForecasts.map(forecast => {
+                const time = new Date(forecast.dt * 1000).toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false
+                })
+                const temp = Math.round(forecast.main.temp)
+                const description = forecast.weather[0].description
+                const weatherMain = forecast.weather[0].main.toLowerCase()
+                const weatherDesc = description.toLowerCase()
+
+                // Get weather icon based on conditions
+                const getWeatherIcon = () => {
+                  if (weatherDesc.includes('snow') || weatherMain === 'snow') return '❄️'
+                  if (weatherDesc.includes('rain') || weatherMain === 'rain') return '🌧️'
+                  if (weatherDesc.includes('drizzle')) return '🌦️'
+                  if (weatherDesc.includes('thunderstorm') || weatherDesc.includes('storm')) return '⛈️'
+                  if (weatherDesc.includes('mist') || weatherDesc.includes('fog')) return '🌫️'
+                  if (weatherDesc.includes('clear')) return '☀️'
+                  if (weatherDesc.includes('cloud')) {
+                    if (weatherDesc.includes('few') || weatherDesc.includes('scattered')) return '⛅'
+                    if (weatherDesc.includes('broken') || weatherDesc.includes('overcast')) return '☁️'
+                    return '🌤️'
+                  }
+                  return '🌤️' // default
+                }
+
+                return (
+                  <div key={forecast.dt} className="hourly-item">
+                    <div className="hourly-time">{time}</div>
+                    <div className="hourly-icon">{getWeatherIcon()}</div>
+                    <div className="hourly-temp">{temp}°C</div>
+                    <div className="hourly-desc">{description}</div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="forecast-section">
-        <h3>📅 3-Day Snow Day Forecast</h3>
-        <div className="forecast-grid">
-          {dailyForecasts.map((day, index) => {
-            const dayMessage = getSnowDayMessage(day.probability)
-            return (
-              <div key={index} className="forecast-card">
-                <h4>{day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</h4>
-                <div className="forecast-weather">
-                  <span className="forecast-icon">{getWeatherIcon(day.weather.weather[0].main)}</span>
-                  <span className="forecast-temp">{Math.round(day.weather.main.temp)}°C</span>
-                </div>
-                <div className="forecast-probability">
-                  <span className="forecast-percent">{day.probability}%</span>
-                  <p className="forecast-message" style={{ color: dayMessage.color }}>
-                    {dayMessage.text}
-                  </p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="weather-details-grid">
-        <div className="detail-card">
-          <h4>🌡️ Temperature</h4>
-          <p>High: {Math.round(current.main.temp_max)}°C</p>
-          <p>Low: {Math.round(current.main.temp_min)}°C</p>
-        </div>
-        <div className="detail-card">
-          <h4>💨 Wind</h4>
-          <p>Speed: {current.wind?.speed || 0} m/s</p>
-          <p>Direction: {current.wind?.deg || 0}°</p>
-        </div>
-        <div className="detail-card">
-          <h4>💧 Humidity</h4>
-          <p>{current.main.humidity}%</p>
-        </div>
-        <div className="detail-card">
-          <h4>👁️ Visibility</h4>
-          <p>{((current.visibility || 10000) / 1000).toFixed(1)} km</p>
-        </div>
-      </div>
+        )
+      })}
     </div>
   )
 }
@@ -352,34 +277,35 @@ function FAQ() {
 
   const faqs = [
     {
-      question: "How accurate are the snow day predictions?",
-      answer: "Our predictions are based on real-time weather data including temperature, precipitation, wind speed, and visibility. While we use proven meteorological factors, actual school closure decisions depend on local policies and road conditions."
+      question: "What is a Snow Day Calculator?",
+      answer: "A snow day calculator is a tool that predicts school closures due to weather conditions. It analyzes temperature, precipitation, and weather patterns to estimate the likelihood of snow days in your area."
     },
     {
-      question: "What factors determine snow day probability?",
-      answer: "We consider temperature (especially below freezing), precipitation type and intensity, wind speed, visibility, and weather conditions. Snow, sleet, and freezing rain increase probability significantly."
+      question: "How accurate is the snow day calculator?",
+      answer: "The snow day calculator uses real-time weather data and historical patterns to make predictions. While we strive for accuracy, actual school closure decisions depend on local school district policies and road conditions."
     },
     {
-      question: "Why might schools close even with low probability?",
-      answer: "School districts consider factors beyond weather, including road conditions, bus safety, staff availability, and local infrastructure. Rural areas may close more readily than urban areas."
+      question: "Can I check snow days by region?",
+      answer: "Yes, you can predict snow days for your area by entering your ZIP code or city name. The calculator will provide location-specific weather forecasts and snow day predictions."
     },
     {
-      question: "How often is the data updated?",
-      answer: "Weather data is updated in real-time from OpenWeatherMap. We recommend checking again closer to the evening or early morning for the most current predictions."
+      question: "Is there a difference between Snow Day Calculator and Snow Day Predictor?",
+      answer: "Both refer to the same concept, but tools vary in accuracy and data sources. Our calculator uses OpenWeatherMap data and considers multiple weather factors for comprehensive predictions."
     },
     {
-      question: "Can I check predictions for other locations?",
-      answer: "Yes! You can search for any city, town, or ZIP code. Use the search bar or click 'Use My Location' to get predictions for your current area."
+      question: "Where can I use the snow day calculator online?",
+      answer: "Our snow day calculator works for multiple regions including rural, urban, and suburban schools. Simply enter your location to get personalized predictions for your area."
     }
   ]
 
   return (
     <section className="faq-section">
-      <h2>❓ Frequently Asked Questions</h2>
+      <h2>Snow Day Calculator FAQs</h2>
+
       {faqs.map((faq, index) => (
         <div key={index} className="faq-item">
           <button
-            className={`faq-question ${openFAQ === index ? 'active' : ''}`}
+            className="faq-question"
             onClick={() => setOpenFAQ(openFAQ === index ? null : index)}
           >
             {faq.question}
