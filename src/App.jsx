@@ -10,7 +10,7 @@ function App() {
   const [isAutoLocation, setIsAutoLocation] = useState(false)
 
   // Weather API configuration
-  const API_KEY = '7f1a3c4e8b9d2f5a6c8e1b4d7a9c2e5f'
+  const API_KEY = 'bd5e378503939ddaee76f12ad7a97608'
   const BASE_URL = 'https://api.openweathermap.org/data/2.5'
 
   // Fetch weather by coordinates (for auto-location)
