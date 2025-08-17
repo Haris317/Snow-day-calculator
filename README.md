@@ -16,7 +16,7 @@ A modern, responsive React application that predicts snow days based on real-tim
 
 ## 🚀 Live Demo
 
-[Add your deployed app URL here]
+https://haris317.github.io/Snow-day-calculator/
 
 ## 🛠️ Technologies Used
 
